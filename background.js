@@ -6,9 +6,9 @@ chrome.runtime.onInstalled.addListener(function(details) {
     // Set default settings on installation
     chrome.storage.sync.set({
       enabled: true,
-      buyText: 'BUY',
+      buyText: 'DEV SELL',
       buyColor: '#52C5FF',
-      sellText: 'SELL',
+      sellText: 'LAST SELL',
       sellColor: '#FF5252'
     });
   }
