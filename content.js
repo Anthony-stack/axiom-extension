@@ -1,37 +1,73 @@
-// Initialize default settings
+// Initialize default settings and WebSocket
 let settings = {
   userId: '',
   connected: false
 };
 
+let socket = null;
+let tokenDataMap = new Map();
+
 // Load saved settings
 chrome.storage.sync.get(['userId', 'connected'], function(items) {
   settings = items;
   if (settings.connected) {
+    initializeWebSocket();
     initializeButtons();
   }
 });
 
+// Initialize WebSocket connection
+function initializeWebSocket() {
+  if (socket) {
+    socket.close();
+  }
+
+  socket = new WebSocket('wss://cluster5.axiom.trade/?');
+  
+  socket.addEventListener('open', () => {
+    console.log('WebSocket connection established');
+    socket.send(JSON.stringify({ "action": "join", "room": "new_pairs" }));
+  });
+
+  socket.addEventListener('message', async (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.token) {
+        // Store token data with address as key
+        tokenDataMap.set(data.token.address.toLowerCase(), data.token);
+      }
+    } catch (error) {
+      console.error('Error processing WebSocket message:', error);
+    }
+  });
+
+  socket.addEventListener('close', () => {
+    console.log('WebSocket connection closed');
+    // Attempt to reconnect after 5 seconds
+    setTimeout(initializeWebSocket, 5000);
+  });
+
+  socket.addEventListener('error', (error) => {
+    console.error('WebSocket error:', error);
+  });
+}
+
 // Initialize buttons for all matching elements
 function initializeButtons() {
-  // Use MutationObserver to handle dynamic content
   createButtonsForExistingElements();
   observeDOMChanges();
 }
 
 // Create buttons for existing elements
 function createButtonsForExistingElements() {
-  // Find the New Pairs section
   const newPairsHeader = Array.from(document.querySelectorAll('span.text-textPrimary.text-\\[16px\\].font-medium'))
     .find(el => el.textContent === 'New Pairs');
   
   if (!newPairsHeader) return;
 
-  // Get the parent container of New Pairs section
   const newPairsSection = newPairsHeader.closest('.flex.flex-1.flex-col');
   if (!newPairsSection) return;
 
-  // Find all token elements within the New Pairs section
   const tokenElements = newPairsSection.querySelectorAll('.flex.flex-row.w-full.gap-\\[12px\\].pl-\\[12px\\].pr-\\[12px\\]');
   
   tokenElements.forEach(element => {
@@ -41,39 +77,31 @@ function createButtonsForExistingElements() {
 
 // Add buttons to a single element
 function addButtonsToElement(element) {
-  // Skip if already has buttons
   if (element.querySelector('.axiom-helper-button-container')) {
     return;
   }
   
-  // Create button container
   const buttonContainer = document.createElement('div');
   buttonContainer.className = 'axiom-helper-button-container';
   
-  // Create BUY button
   const buyButton = document.createElement('button');
   buyButton.className = 'axiom-helper-button axiom-helper-buy';
   buyButton.textContent = 'BUY';
   
-  // Create SELL button
   const sellButton = document.createElement('button');
   sellButton.className = 'axiom-helper-button axiom-helper-sell';
   sellButton.textContent = 'SELL';
   
-  // Add event listeners
   buyButton.addEventListener('click', (e) => handleButtonClick(e, 'buy', element));
   sellButton.addEventListener('click', (e) => handleButtonClick(e, 'sell', element));
   
-  // Append buttons to container
   buttonContainer.appendChild(buyButton);
   buttonContainer.appendChild(sellButton);
   
-  // Add position relative to parent if needed
   if (getComputedStyle(element).position === 'static') {
     element.style.position = 'relative';
   }
   
-  // Append container to element
   element.appendChild(buttonContainer);
 }
 
@@ -85,11 +113,27 @@ function handleButtonClick(event, action, element) {
   const button = event.currentTarget;
   button.classList.add('axiom-helper-button-pulse');
   
-  // Extract token address from the element
   const tokenInfo = extractTokenInfo(element);
-  console.log(`${action.toUpperCase()} action for token:`, tokenInfo);
   
-  // Remove animation class after animation completes
+  // Get complete token data from WebSocket data
+  const completeTokenInfo = tokenInfo.address ? 
+    tokenDataMap.get(tokenInfo.address.toLowerCase()) : null;
+  
+  const finalTokenInfo = {
+    ...tokenInfo,
+    ...completeTokenInfo
+  };
+  
+  console.log(`${action.toUpperCase()} action for token:`, finalTokenInfo);
+  
+  // Send message to background script
+  chrome.runtime.sendMessage({
+    action: action + 'Token',
+    tokenInfo: finalTokenInfo
+  }, response => {
+    console.log('Background response:', response);
+  });
+  
   setTimeout(() => {
     button.classList.remove('axiom-helper-button-pulse');
   }, 400);
@@ -99,11 +143,9 @@ function handleButtonClick(event, action, element) {
 function extractTokenInfo(element) {
   if (!element) return { name: 'Unknown', symbol: 'Unknown', address: null };
   
-  // Find the button with token address
   const addressButton = element.querySelector('button.text-textTertiary span');
   const address = addressButton ? addressButton.textContent.trim() : null;
   
-  // Extract token name and symbol
   const nameElement = element.querySelector('.text-\\[16px\\].font-medium.tracking-\\[-0\\.02em\\].truncate');
   const fullNameElement = element.querySelector('.text-inherit.text-\\[16px\\]');
   
@@ -114,7 +156,7 @@ function extractTokenInfo(element) {
     symbol,
     name,
     address,
-    element
+    timestamp: new Date().toISOString()
   };
 }
 
