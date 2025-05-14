@@ -58,6 +58,18 @@
   opacity: 1;
 }
 
+/* Trading page specific styles */
+.axiom-helper-trading-buttons {
+  margin-left: auto;
+  margin-right: 16px;
+}
+
+.axiom-helper-trading-buttons .axiom-helper-button {
+  opacity: 1;
+  margin-right: 0;
+  margin-left: 8px;
+}
+
 /* Animation for button click */
 @keyframes buttonPulse {
   0% { transform: scale(1); }
